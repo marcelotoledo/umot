@@ -35,6 +35,7 @@ from bs4 import BeautifulSoup
 
 version = "0.1"
 
+
 def valid_href(link):
     href = link.get('href')
     if href and len(href):
@@ -54,9 +55,13 @@ def get_url(url):
         'User-agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'}
     return requests.get(url, headers=headers)
 
-def check_broken_link(url):
-    response = get_url(url)
-    return response.status_code is not 200
+
+def broken_links(links):
+    return filter(lambda url: get_url(url).status_code is not 200, links)
+
+
+def filter_bro
+
 
 def usage():
     print("Usage: %s [url]" % sys.argv[0])
@@ -75,23 +80,23 @@ def main():
     response = get_url(url)
     links = get_links(response.text)
 
-    internal_links = filter(lambda x: url in x, links)
+    internal_links = broken_links(links)
     external_links = list(set(internal_links) - set(links))
 
-    broken_internal = filter(lambda url: check_broken_link(url), internal_links)
-    broken_external = filter(lambda url: check_broken_link(url), external_links)
-
+    broken_internal =
+    broken_external = filter(
+        lambda url: check_broken_link(url), external_links)
 
     print 'Amount of internal URLs: %s' % len(internal_links)
-    if len(broken_internal) > 0 :
+    if len(broken_internal) > 0:
         print 'List of broken internal URLs:'
         for link in broken_internal:
             print '- %s' % link
     else:
         print 'There is not any broken internal URLs'
 
-    print 'Amount of external URLs: %s' % len(external_links) 
-    if len(broken_external) > 0 :
+    print 'Amount of external URLs: %s' % len(external_links)
+    if len(broken_external) > 0:
         print 'List of broken external URLs:'
         for link in broken_external:
             print '- %s' % link
