@@ -60,7 +60,14 @@ def broken_links(links):
     return filter(lambda url: get_url(url).status_code is not 200, links)
 
 
-def filter_bro
+def print_result(context, links, brokens):
+    print 'Amount of %s URLs: %s' % (context, len(links))
+    if len(brokens) > 0:
+        print 'List of broken %s URLs:' % context
+        for link in brokens:
+            print '- %s' % link
+    else:
+        print 'There is not any broken %s URLs' % context
 
 
 def usage():
@@ -80,29 +87,14 @@ def main():
     response = get_url(url)
     links = get_links(response.text)
 
-    internal_links = broken_links(links)
+    internal_links = filter(lambda x: url in x, links)
     external_links = list(set(internal_links) - set(links))
 
-    broken_internal =
-    broken_external = filter(
-        lambda url: check_broken_link(url), external_links)
+    broken_internal = broken_links(internal_links)
+    broken_external = broken_links(external_links)
 
-    print 'Amount of internal URLs: %s' % len(internal_links)
-    if len(broken_internal) > 0:
-        print 'List of broken internal URLs:'
-        for link in broken_internal:
-            print '- %s' % link
-    else:
-        print 'There is not any broken internal URLs'
-
-    print 'Amount of external URLs: %s' % len(external_links)
-    if len(broken_external) > 0:
-        print 'List of broken external URLs:'
-        for link in broken_external:
-            print '- %s' % link
-    else:
-        print 'There is not any broken external URLs'
-
+    print_result('internal', internal_links, broken_internal)
+    print_result('external', external_links, broken_external)
 
 if __name__ == '__main__':
     main()
