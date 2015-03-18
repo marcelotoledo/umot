@@ -1,4 +1,4 @@
-#!/usr/local/bin/python3
+#!/usr/bin/env python
 #
 # umot.py --- url monitor
 
@@ -30,71 +30,74 @@
 # Code:
 
 import sys
-import requests
-from bs4 import BeautifulSoup
+import ummq
+import umurl
+import time
+import psycopg2
 
 version = "0.1"
 
+def persist_links(links, is_internal = True):
+    conn = psycopg2.connect("dbname=umot user=umot password=RabrXfC9ggBhyFWBsWAWoH3")
+    cur  = conn.cursor()
 
-def valid_href(link):
-    href = link.get('href')
-    if href and len(href):
-        return True
-    return False
+    for i in links:
+        internal = 'Y' if is_internal else 'N'
+        print(" [*] Persisting %s into the database" % i)
+        cur.execute("INSERT INTO link (id_website, link, internal) VALUES (1, %s, %s)", (i, internal))
 
+    conn.commit()
+    
+    cur.close()
+    conn.close()
 
-def get_links(response):
-    soup = BeautifulSoup(response)
-    hrefs = [a.get('href') for a in soup.findAll('a')
-             if a.get('href') and len(a.get('href')) > 1]
-    return list(set(hrefs))
+def add_to_queue(links, mq):
+    for i in links:
+        print(" [*] Adding %s to the queue" % i)
+        mq.write(i)
 
+def remove_existent_links(links):
+    conn = psycopg2.connect("dbname=umot user=umot password=RabrXfC9ggBhyFWBsWAWoH3")
+    cur  = conn.cursor()
 
-def get_url(url):
-    headers = {
-        'User-agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'}
-    return requests.get(url, headers=headers)
+    for i in links:
+        cur.execute("SELECT count(*) FROM link WHERE link=%s;", (i, ))
+        res = cur.fetchone()
+        if int(res[0]) > 0:
+            print(" [*] Duplicated %s" % i)
+            links.remove(i)
 
+    cur.close()
+    conn.close()
 
-def broken_links(links):
-    return filter(lambda url: get_url(url).status_code is not 200, links)
+    return links
+        
 
+def callback(ch, method, properties, body):
+    print(" [*] processing %s" % body)
+    
+    url = umurl.UMURL(body)
+    url.request()
+    url.extract_ahrefs()
 
-def print_result(context, links, brokens):
-    print 'Amount of %s URLs: %s' % (context, len(links))
-    if len(brokens) > 0:
-        print 'List of broken %s URLs:' % context
-        for link in brokens:
-            print '- %s' % link
-    else:
-        print 'There is not any broken %s URLs' % context
+    internal_links  = filter(lambda x: body in x, url.links)
+    #external_links  = filter(lambda x: 'http://' in x, set(links) - set(internal_links))
 
+    internal_links = remove_existent_links(internal_links)
+    #external_links = remove_existent_links(external_links)
 
-def usage():
-    print("Usage: %s [url]" % sys.argv[0])
+    add_to_queue(internal_links, mq)
+    #add_to_queue(external_links)
+    persist_links(internal_links)
+    #persist_links(external_links, False)
 
-
-def main():
-    print("umot ver %s - Copyright 2014 (C) Marcelo Toledo\n" % version)
-
-    if len(sys.argv) != 2:
-        usage()
-        return
-
-    print("Scanning url %s..." % sys.argv[1])
-
-    url = sys.argv[1]
-    response = get_url(url)
-    links = get_links(response.text)
-
-    internal_links = filter(lambda x: url in x, links)
-    external_links = list(set(internal_links) - set(links))
-
-    broken_internal = broken_links(internal_links)
-    broken_external = broken_links(external_links)
-
-    print_result('internal', internal_links, broken_internal)
-    print_result('external', external_links, broken_external)
+    mq.ack(method)
 
 if __name__ == '__main__':
-    main()
+    print("umot ver %s - Copyright 2014 (C) Marcelo Toledo\n" % version)
+
+    mq = ummq.UMMQueue('localhost', 'umot_queue', callback)
+
+    mq.open()
+    print(' [*] Waiting for the next item in queue')
+    mq.consume()
