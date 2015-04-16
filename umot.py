@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# umot.py --- url monitor
+# umot.py ---
 
 # Copyright  (C)  2015  Marcelo Toledo <marcelo@marcelotoledo.com>
 
@@ -32,64 +32,36 @@
 import sys
 import ummq
 import umurl
-import time
-import psycopg2
+from umwsclient import UMWSClient
 
 version = "0.1"
 
-def persist_links(links, is_internal = True):
-    conn = psycopg2.connect("dbname=umot user=umot password=RabrXfC9ggBhyFWBsWAWoH3")
-    cur  = conn.cursor()
-
-    for i in links:
-        internal = 'Y' if is_internal else 'N'
-        print(" [*] Persisting %s into the database" % i)
-        cur.execute("INSERT INTO link (id_website, link, internal) VALUES (1, %s, %s)", (i, internal))
-
-    conn.commit()
-    
-    cur.close()
-    conn.close()
-
-def add_to_queue(links, mq):
-    for i in links:
-        print(" [*] Adding %s to the queue" % i)
-        mq.write(i)
-
-def remove_existent_links(links):
-    conn = psycopg2.connect("dbname=umot user=umot password=RabrXfC9ggBhyFWBsWAWoH3")
-    cur  = conn.cursor()
-
-    for i in links:
-        cur.execute("SELECT count(*) FROM link WHERE link=%s;", (i, ))
-        res = cur.fetchone()
-        if int(res[0]) > 0:
-            print(" [*] Duplicated %s" % i)
-            links.remove(i)
-
-    cur.close()
-    conn.close()
-
-    return links
-        
-
 def callback(ch, method, properties, body):
     print(" [*] processing %s" % body)
+
+    c = UMWSClient()
     
+    if c.link_exist(body):
+        print(" [!] NOT processing %s" % body)
+        mq.ack(method)
+        return False
+
+    c.persist_link(body)
+
     url = umurl.UMURL(body)
     url.request()
     url.extract_ahrefs()
 
-    internal_links  = filter(lambda x: body in x, url.links)
-    #external_links  = filter(lambda x: 'http://' in x, set(links) - set(internal_links))
-
-    internal_links = remove_existent_links(internal_links)
+    url.website = 'http://marcelotoledo.com'
+    #internal_links  = filter(lambda x: url.website in x, url.links)
+    #internal_links  = filter(url.is_internal, url.links)
+    
+    #external_links = filter(lambda x: 'http://' in x, set(links) - set(internal_links))
     #external_links = remove_existent_links(external_links)
 
-    add_to_queue(internal_links, mq)
-    #add_to_queue(external_links)
-    persist_links(internal_links)
-    #persist_links(external_links, False)
+    for i in url.links:
+        print(" [*] Queueing %s" % i)
+        mq.write(i)
 
     mq.ack(method)
 

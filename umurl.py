@@ -34,6 +34,7 @@ import requests
 class UMURL:
     def __init__(self, url):
         self.url         = url
+        self.website     = None
         self.response    = None
         self.status_code = None
         self.content     = None
@@ -45,9 +46,22 @@ class UMURL:
         self.response    = requests.get(self.url, headers=headers)
         self.status_code = self.response.status_code
         self.content     = self.response.text
-    
+
+    def is_internal(self, url):
+        # import re
+        # match = '^' + self.website.replace('.', '\.')
+        # if re.match(match, url) is None:
+        #     return False
+        # return True
+        import re
+        match = '^http://marcelotoledo\.com.*'
+        if re.match(match, url) is None:
+            return False
+        return True
+
     def extract_ahrefs(self):
         soup = BeautifulSoup(self.content)
         hrefs = [a.get('href') for a in soup.findAll('a')
                  if a.get('href') and len(a.get('href')) > 1]
         self.links = list(set(hrefs))
+        self.links = filter(self.is_internal, self.links)
